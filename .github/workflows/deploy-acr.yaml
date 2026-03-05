@@ -1,0 +1,45 @@
+name: Build and push src image to Azure Container Registry
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:    
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and push Docker image (src only)
+        working-directory: src
+        env:
+          ENV_SECRET: ${{ secrets.ENV }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          IMAGE_NAME: ${{ secrets.ACR_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          printf "%s" "$ENV_SECRET" > .env
+          docker build -f Dockerfile -t "$ACR_LOGIN_SERVER/$IMAGE_NAME:${{ github.sha }}" -t "$ACR_LOGIN_SERVER/$IMAGE_NAME:latest" .
+          docker push "$ACR_LOGIN_SERVER/$IMAGE_NAME:${{ github.sha }}"
+          docker push "$ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
+
+      - name: Cleanup
+        if: always()
+        working-directory: src
+        run: rm -f .env
