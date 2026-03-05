@@ -33,18 +33,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Use a service principal JSON stored as a repo secret.
-      # This is the classic azure/login pattern (not OIDC).
       - name: Azure login (AZURE_CREDENTIALS)
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Create .env from GitHub secret (do not commit)
+        working-directory: src
+        env:
+          ENV_FILE_CONTENTS: ${{ secrets.ENV }}
+        run: |
+          set -euo pipefail
+          # Write exactly what's stored in the secret (supports multi-line)
+          printf "%s" "$ENV_FILE_CONTENTS" > .env
+
+          # Optional: sanity check without leaking values
+          test -s .env
+
       - name: Run initializer script
         working-directory: src
         env:
-          # Many Azure SDK samples look for these; the script can read AZURE_CREDENTIALS directly too.
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           PYTHONPATH: ${{ github.workspace }}/src
+          # In case the script reads this directly:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           python -u app/agents/customerLoyaltyAgent_initializer.py
+
+      - name: Cleanup .env
+        if: always()
+        working-directory: src
+        run: rm -f .env
